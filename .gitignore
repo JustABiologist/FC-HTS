@@ -3,6 +3,7 @@ data/
 *.fcs
 *.xls
 *.xlsx
+*.csv
 
 # Ignore virtual environment
 venv/

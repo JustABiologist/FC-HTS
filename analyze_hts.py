@@ -23,6 +23,7 @@ def parse_arguments():
     parser.add_argument("wt_name", help="Name of the Wild Type (WT) annotation in the layout.")
     parser.add_argument("blank_name", help="Name of the Blank annotation in the layout used for background correction.")
     parser.add_argument("--channel", default="Blue-CA", help="Name of the channel to analyze (default: Blue-CA).")
+    parser.add_argument("--output", "-o", default=".", help="Output directory for results (default: current directory).")
     return parser.parse_args()
 
 def normalize_well_id(well_str):
@@ -175,6 +176,10 @@ def biexponential_transform(events, a=0.5, b=1, c=0.5, d=1, f=0, w=0):
 
 def main():
     args = parse_arguments()
+    
+    # Create output dir if not exists
+    if not os.path.exists(args.output):
+        os.makedirs(args.output)
     
     # 1. Load Plate Layout
     layout = read_plate_layout(args.layout_file)
@@ -335,7 +340,7 @@ def main():
     plt.title(f"Raw Measurements ({args.channel}) - Median +/- SD")
     plt.xticks(rotation=45, ha='right')
     plt.tight_layout()
-    plt.savefig("1_raw_measurements.png", dpi=300)
+    plt.savefig(os.path.join(args.output, "1_raw_measurements.png"), dpi=300)
     plt.close()
     
     # Plot 2: Inverse Fold Change
@@ -368,7 +373,7 @@ def main():
     plt.xticks(rotation=45, ha='right')
     plt.axhline(1, color='r', linestyle='--')
     plt.tight_layout()
-    plt.savefig("2_inverse_fold_change.png", dpi=300)
+    plt.savefig(os.path.join(args.output, "2_inverse_fold_change.png"), dpi=300)
     plt.close()
     
     # Plot 3: Histograms
@@ -456,7 +461,7 @@ def main():
                 # ax.text(0.5, 0.5, "Empty", ha='center', va='center', fontsize=6, transform=ax.transAxes)
                 
     plt.tight_layout()
-    plt.savefig("3_histograms.png", dpi=300)
+    plt.savefig(os.path.join(args.output, "3_histograms.png"), dpi=300)
     plt.close()
     
     # Plot 4: Heatmap of SD (Wacko identification)
@@ -488,7 +493,7 @@ def main():
                 xticklabels=[str(i) for i in range(1, 13)],
                 yticklabels=list(row_map.keys()), cmap="viridis")
     plt.title(f"Heatmap of Intra-Well Standard Deviation ({args.channel})")
-    plt.savefig("4_sd_heatmap.png", dpi=300)
+    plt.savefig(os.path.join(args.output, "4_sd_heatmap.png"), dpi=300)
     plt.close()
     
     # Plot 5: Heatmap of IQR
@@ -631,10 +636,56 @@ def main():
                  pass
 
     plt.title(f"Heatmap of Intra-Well IQR ({args.channel}) - Capped at 6500")
-    plt.savefig("5_iqr_heatmap.png", dpi=300)
+    plt.savefig(os.path.join(args.output, "5_iqr_heatmap.png"), dpi=300)
     plt.close()
 
-    print("Analysis complete. Outputs saved.")
+    # EXCEL EXPORT
+    print("Generating summary Excel file...")
+    
+    # Prepare Data for Excel (Pivot Tables)
+    # Rows: Replicates (1, 2, 3...)
+    # Columns: Mutations (Sample names)
+    
+    # 1. Inverse Fold Change Pivot
+    # df_res has 'Sample', 'Rep_Num', 'Inverse_FC'
+    # We want Mutation as Header -> Columns=Sample
+    # Replicates in same column -> This is ambiguous.
+    # "headers are the mutations and each of the replicates are in the same column"
+    # -> Column A: Mutation 1. Rows 2,3,4: Rep 1, 2, 3 values.
+    # This corresponds to pivot(index=Rep_Num, columns=Sample).
+    
+    # Filter out blanks for Inverse FC sheet? Usually yes, or include everything.
+    # Let's include everything available in df_res that has an Inverse_FC value.
+    
+    try:
+        pivot_ifc = df_res.pivot(index='Rep_Num', columns='Sample', values='Inverse_FC')
+        pivot_raw = df_res.pivot(index='Rep_Num', columns='Sample', values='Median')
+        
+        # Sort columns alphabetically
+        pivot_ifc = pivot_ifc.sort_index(axis=1)
+        pivot_raw = pivot_raw.sort_index(axis=1)
+        
+        excel_path = os.path.join(args.output, "summary.xlsx")
+        csv_ifc_path = os.path.join(args.output, "summary_inverse_fc.csv")
+        csv_raw_path = os.path.join(args.output, "summary_raw_median.csv")
+        
+        # Save as standard Excel
+        with pd.ExcelWriter(excel_path, engine='openpyxl') as writer:
+            pivot_ifc.to_excel(writer, sheet_name='Inverse Fold Change')
+            pivot_raw.to_excel(writer, sheet_name='Raw Measurements Median')
+            
+        # Save as CSVs with European format (semicolon separator, comma decimal)
+        # Excel "European" CSVs usually use ; as separator and , as decimal
+        pivot_ifc.to_csv(csv_ifc_path, sep=';', decimal=',')
+        pivot_raw.to_csv(csv_raw_path, sep=';', decimal=',')
+            
+        print(f"Summary Excel saved to {excel_path}")
+        print(f"European CSV summaries saved to {csv_ifc_path} and {csv_raw_path}")
+        
+    except Exception as e:
+        print(f"Error creating Excel file: {e}")
+
+    print(f"Analysis complete. Outputs saved to {args.output}")
 
 if __name__ == "__main__":
     main()
