@@ -1,0 +1,21 @@
+# Ignore data files
+data/
+*.fcs
+*.xls
+*.xlsx
+
+# Ignore virtual environment
+venv/
+.env/
+env/
+
+# Ignore outputs
+*.png
+*.pdf
+*.svg
+
+# Python
+__pycache__/
+*.pyc
+.DS_Store
+
