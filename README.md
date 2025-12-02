@@ -11,9 +11,9 @@ Key features:
 - **Biexponential Transformation**: Applies arcsinh transformation to flow cytometry data for visualization.
 - **Statistical Analysis**: Calculates Median intensity, Standard Deviation, and Inverse Fold Change relative to Wild Type (WT).
 - **Visualizations**:
-    - Raw Measurements Bar Chart (Median +/- SD)
-    - Inverse Fold Change Bar Chart (Sorted by magnitude)
-    - 96-well Grid Histograms (Log-scale/Biexponential axis)
+    - Raw Measurements Bar Chart (Median +/- SD, with individual points)
+    - Inverse Fold Change Bar Chart (Sorted by magnitude, with individual points)
+    - 96-well Grid Histograms (Biexponential axis)
     - Heatmaps for Intra-well SD and IQR (Quality Control)
 
 ## Installation
@@ -24,14 +24,16 @@ Key features:
     cd FC-HTS-Fortessa
     ```
 
-2.  Create a virtual environment (recommended):
+2.  Create the environment using Conda (Recommended):
+    ```bash
+    conda env create -f environment.yaml
+    conda activate hts_pipeline
+    ```
+
+    Or using Python venv:
     ```bash
     python3 -m venv venv
     source venv/bin/activate
-    ```
-
-3.  Install dependencies:
-    ```bash
     pip install -r requirements.txt
     ```
 
@@ -40,7 +42,7 @@ Key features:
 Run the `analyze_hts.py` script with the required arguments:
 
 ```bash
-python analyze_hts.py <layout_file> <fcs_directory> <wt_name> <blank_name> [--channel CHANNEL_NAME]
+python analyze_hts.py <layout_file> <fcs_directory> <wt_name> <blank_name> [--channel CHANNEL_NAME] [--output OUTPUT_DIR]
 ```
 
 ### Arguments:
@@ -49,19 +51,24 @@ python analyze_hts.py <layout_file> <fcs_directory> <wt_name> <blank_name> [--ch
 - `wt_name`: The name used for the Wild Type sample in the layout (e.g., "WT").
 - `blank_name`: The name used for the Blank/Negative control in the layout (e.g., "Rep").
 - `--channel`: (Optional) The channel name to analyze (default: "Blue-CA").
+- `--output` / `-o`: (Optional) Output directory for results (default: current directory).
 
 ### Example:
 
 ```bash
-python analyze_hts.py "data/layout.xlsx" "data/experiment_001/" WT Rep --channel "Blue C-A"
+python analyze_hts.py "data/layout.xlsx" "data/experiment_001/" WT Rep --channel "Blue C-A" --output results/
 ```
 
 ## Outputs
 
-The script generates the following plots in the current directory:
-1.  `1_raw_measurements.png`: Bar chart of median fluorescence intensity.
-2.  `2_inverse_fold_change.png`: Bar chart of inverse fold change (WT / Sample).
-3.  `3_histograms.png`: 8x12 grid of histograms for each well.
-4.  `4_sd_heatmap.png`: Heatmap of standard deviation within each well.
-5.  `5_iqr_heatmap.png`: Heatmap of interquartile range (IQR) within each well (QC tool).
-
+The script generates the following in the output directory:
+1.  **Plots**:
+    - `1_raw_measurements.png`: Median fluorescence intensity.
+    - `2_inverse_fold_change.png`: Inverse fold change (WT / Sample).
+    - `3_histograms.png`: 8x12 grid of histograms.
+    - `4_sd_heatmap.png`: Heatmap of standard deviation.
+    - `5_iqr_heatmap.png`: Heatmap of IQR (outliers > 6500 blacked out).
+2.  **Data**:
+    - `summary.xlsx`: Excel file with pivoted data (Inverse FC and Raw Medians).
+    - `summary_inverse_fc.csv`: European-formatted CSV (semicolon separator).
+    - `summary_raw_median.csv`: European-formatted CSV (semicolon separator).
