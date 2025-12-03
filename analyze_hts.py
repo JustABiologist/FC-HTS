@@ -22,7 +22,7 @@ def parse_arguments():
     parser.add_argument("fcs_input", help="Path to the directory containing .fcs files (or a single .fcs file).")
     parser.add_argument("wt_name", help="Name of the Wild Type (WT) annotation in the layout.")
     parser.add_argument("blank_name", help="Name of the Blank annotation in the layout used for background correction.")
-    parser.add_argument("--channel", default="Blue-CA", help="Name of the channel to analyze (default: Blue-CA).")
+    parser.add_argument("--channel", default="Blue C-A", help="Name of the channel to analyze (default: Blue-CA).")
     parser.add_argument("--output", "-o", default=".", help="Output directory for results (default: current directory).")
     return parser.parse_args()
 
