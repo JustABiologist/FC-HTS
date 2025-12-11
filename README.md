@@ -74,8 +74,10 @@ The script generates the following in the output directory:
     - `4_sd_heatmap.png`: Heatmap of standard deviation.
     - `5_iqr_heatmap.png`: Heatmap of IQR (outliers > 6500 blacked out).
     - `6–11_*.png`: Supplemental split plots for Top-5 vs rest (inverse FC, raw medians, fold change).
-    - `12_cells_heatmap.png`: Estimated total cells per well (requires flow rate, corrected for doublets).
-    - `13_od600_heatmap.png`: Estimated OD600 of the undiluted cell medium (LB calibration ≈8×10⁸ cells/mL per OD).
+    - `12_cells_heatmap.png`: Estimated total cells per well (⚠️ rough estimate ±50%).
+    - `13_od600_heatmap.png`: Estimated OD600 of the undiluted cell medium (⚠️ rough estimate ±50%).
+
+> **⚠️ Warning**: Cell counts and OD600 estimates (plots 12-13) are approximations only. The BD LSR Fortessa does not have volumetric counting capability. The calculation relies on user-provided flow rate which is not recorded in the FCS file. For accurate absolute counts, use counting beads (TruCount/CountBright) or a volumetric cytometer.
 2.  **Data**:
     - `summary.xlsx`: Excel file with pivoted data (Inverse FC and Raw Medians).
     - `summary_inverse_fc.csv`: European-formatted CSV (semicolon separator).

@@ -833,7 +833,7 @@ def main():
         sns.heatmap(plate_cells, annot=True, fmt=".0f", 
                     xticklabels=[str(i) for i in range(1, 13)],
                     yticklabels=list(row_map.keys()), cmap="magma")
-        plt.title(f"Heatmap of Estimated Cell Count per Well (Doublet-Corrected)")
+        plt.title(f"Heatmap of Estimated Cell Count per Well (⚠️ ROUGH ESTIMATE ±50%)")
         plt.savefig(os.path.join(args.output, "12_cells_heatmap.png"), dpi=300)
         plt.close()
 
@@ -866,7 +866,7 @@ def main():
         sns.heatmap(plate_od, annot=True, fmt=".2f", 
                     xticklabels=[str(i) for i in range(1, 13)],
                     yticklabels=list(row_map.keys()), cmap="YlOrRd")
-        plt.title(f"Heatmap of Estimated OD600 (Pre-Dilution Cell Medium)")
+        plt.title(f"Heatmap of Estimated OD600 Pre-Dilution (⚠️ ROUGH ESTIMATE ±50%)")
         plt.savefig(os.path.join(args.output, "13_od600_heatmap.png"), dpi=300)
         plt.close()
 
@@ -917,6 +917,30 @@ def main():
         print(f"Error creating Excel file: {e}")
 
     print(f"Analysis complete. Outputs saved to {args.output}")
+    
+    # Print warning about cell count estimation accuracy
+    if args.flow_rate:
+        print("\n" + "="*70)
+        print("⚠️  WARNING: Cell Count / OD600 Estimation Accuracy")
+        print("="*70)
+        print("""
+The cell counts and OD600 values in plots 12-13 are ROUGH ESTIMATES only.
+
+The BD LSR Fortessa does NOT have volumetric counting capability.
+Our calculation uses: cells = (events / (flow_rate × time)) × well_volume
+
+Known sources of error (estimated total: ±30-50%):
+  • Flow rate not recorded in FCS file - user-provided value may be inaccurate
+  • Flow rate varies during acquisition (±10-20%)
+  • Doublet discrimination threshold is approximate
+  • OD600 calibration factor varies by strain/conditions (±2-5×)
+
+For accurate absolute counts, use:
+  1. Counting beads (TruCount, CountBright) - Gold standard
+  2. Volumetric cytometer (BD Accuri C6)
+  3. Validate with hemocytometer or plate reader
+""")
+        print("="*70 + "\n")
 
 if __name__ == "__main__":
     main()
