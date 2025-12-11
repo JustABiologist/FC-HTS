@@ -375,7 +375,7 @@ def main():
     # So sorting descending puts the strongest inhibitors first.
     
     # Calculate mean per sample for sorting
-    sample_order = df_plot_ifc.groupby('Sample')['Inverse_FC'].mean().sort_values(ascending=False).index
+    sample_order = df_plot_ifc.groupby('Sample')['Inverse_FC'].mean().sort_values(ascending=False).index.tolist()
     
     # Plot using the individual replicate values, allowing seaborn to calculate Mean and SD
     sns.barplot(data=df_plot_ifc, x='Sample', y='Inverse_FC', errorbar='sd', capsize=.1, order=sample_order, alpha=0.7)
@@ -389,6 +389,72 @@ def main():
     plt.tight_layout()
     plt.savefig(os.path.join(args.output, "2_inverse_fold_change.png"), dpi=300)
     plt.close()
+
+    # Plot 6: Inverse FC - Top 5 Mutants (bars + dots)
+    top5 = sample_order[:5]
+    plt.figure(figsize=(12, 6))
+    group_df = df_plot_ifc[df_plot_ifc['Sample'].isin(top5)]
+    order_top5 = [s for s in top5 if s in group_df['Sample'].unique()]
+    sns.barplot(data=group_df, x='Sample', y='Inverse_FC', errorbar='sd', capsize=.1,
+                order=order_top5, palette='tab20', alpha=0.8)
+    sns.stripplot(data=group_df, x='Sample', y='Inverse_FC', order=order_top5,
+                  color='black', size=4, jitter=True, alpha=0.7)
+    plt.title("Top 5 Mutants by Inverse Fold Change")
+    plt.axhline(1, color='r', linestyle='--')
+    plt.ylabel("Inverse FC")
+    plt.tight_layout()
+    plt.savefig(os.path.join(args.output, "6_inverse_fc_top5.png"), dpi=300)
+    plt.close()
+
+    # Plot 7: Inverse FC - Remaining Mutants
+    rest = sample_order[5:]
+    plt.figure(figsize=(14, 6))
+    group_df = df_plot_ifc[df_plot_ifc['Sample'].isin(rest)]
+    order_rest = [s for s in rest if s in group_df['Sample'].unique()]
+    sns.barplot(data=group_df, x='Sample', y='Inverse_FC', errorbar='sd', capsize=.1,
+                order=order_rest, palette='tab20', alpha=0.8)
+    sns.stripplot(data=group_df, x='Sample', y='Inverse_FC', order=order_rest,
+                  color='black', size=3, jitter=True, alpha=0.6)
+    plt.title("Remaining Mutants (Inverse Fold Change)")
+    plt.axhline(1, color='r', linestyle='--')
+    plt.xticks(rotation=45, ha='right')
+    plt.ylabel("Inverse FC")
+    plt.tight_layout()
+    plt.savefig(os.path.join(args.output, "7_inverse_fc_rest.png"), dpi=300)
+    plt.close()
+
+    # Additional plots: raw lowest 5 vs rest and fold change (sample/WT) lowest 5 vs rest
+    raw_candidates = [s for s in raw_order if s not in [args.blank_name, args.wt_name]]
+    raw_low5 = raw_candidates[:5]
+    raw_rest = raw_candidates[5:]
+
+    if wt_corrected_val == 0:
+        df_res['Fold_Change'] = np.nan
+    else:
+        df_res['Fold_Change'] = df_res['Corrected_Val'] / wt_corrected_val
+
+    def plot_group(group_samples, metric, title, filename):
+        plt.figure(figsize=(12, 6))
+        group_df = df_res[df_res['Sample'].isin(group_samples)]
+        order = [name for name in group_samples if name in group_df['Sample'].unique()]
+        sns.barplot(data=group_df, x='Sample', y=metric, errorbar='sd', capsize=.1,
+                    order=order, palette='tab20', alpha=0.8)
+        sns.stripplot(data=group_df, x='Sample', y=metric, order=order,
+                      color='black', size=4, jitter=True, alpha=0.6)
+        if metric == 'Fold_Change':
+            plt.axhline(1, color='r', linestyle='--')
+        plt.title(title)
+        plt.xticks(rotation=45, ha='right')
+        plt.tight_layout()
+        plt.savefig(os.path.join(args.output, filename), dpi=300)
+        plt.close()
+
+    if raw_low5:
+        plot_group(raw_low5, 'Median', "Lowest 5 Raw Median Samples", "8_raw_lowest5.png")
+        plot_group(raw_low5, 'Fold_Change', "Lowest 5 Fold Change vs WT", "10_fc_lowest5.png")
+    if raw_rest:
+        plot_group(raw_rest, 'Median', "Remaining Raw Median Samples", "9_raw_rest.png")
+        plot_group(raw_rest, 'Fold_Change', "Remaining Fold Change vs WT", "11_fc_rest.png")
     
     # Plot 3: Histograms
     # "Histogram of the Blue-CA cell counts for every mutant each as a subplot in a larger plot"
