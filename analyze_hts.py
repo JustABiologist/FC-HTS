@@ -8,6 +8,10 @@ import warnings
 import flowio
 import pandas as pd
 import numpy as np
+
+# Use non-interactive backend for compatibility (Windows, headless servers)
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 import seaborn as sns
