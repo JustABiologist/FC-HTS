@@ -24,8 +24,14 @@ def parse_arguments():
     parser.add_argument("blank_name", help="Name of the Blank annotation in the layout used for background correction.")
     parser.add_argument("--channel", default="Blue C-A", help="Name of the channel to analyze (default: Blue-CA).")
     parser.add_argument("--flow-rate", type=float, default=None, help="Flow rate (µL/sec) for the instrument.")
-    parser.add_argument("--doublet-threshold", type=float, default=1.1,
-                        help="FSC-A / FSC-H ratio above which an event is treated as a doublet.")
+    parser.add_argument("--doublet-threshold", type=float, default=1.5,
+                        help="FSC-A / FSC-H ratio above which an event is treated as a doublet (default: 1.5).")
+    parser.add_argument("--od-calibration", type=float, default=8e8,
+                        help="Cells/mL per OD600 unit for your organism (default: 8e8 for E. coli in LB).")
+    parser.add_argument("--cell-volume", type=float, default=20.0,
+                        help="Volume of cell suspension added to each well in µL (default: 20).")
+    parser.add_argument("--well-volume", type=float, default=300.0,
+                        help="Total volume in each well in µL (default: 300).")
     parser.add_argument("--output", "-o", default=".", help="Output directory for results (default: current directory).")
     return parser.parse_args()
 
@@ -326,7 +332,7 @@ def main():
             sampled_volume = args.flow_rate * duration
             if sampled_volume > 0:
                 concentration = corrected_events / sampled_volume
-                cells_in_well = concentration * 300.0
+                cells_in_well = concentration * args.well_volume
 
         results.append({
             'Well': well,
@@ -828,16 +834,13 @@ def main():
         plt.close()
 
         # Plot 13: Heatmap of estimated OD600 (pre-dilution)
-        # Using LB calibration: ~8e8 cells/mL per OD unit
-        # cells_in_well is total cells in 300 µL (diluted)
-        # Original 20 µL cell medium was diluted into 300 µL total
-        # So concentration in original = (cells_in_well / 300 µL) * (300 µL / 20 µL) = cells_in_well / 20 µL
-        # OD600 = concentration (cells/mL) / 8e8
-        # concentration in original (cells/mL) = (cells_in_well / 20 µL) * 1000 µL/mL = cells_in_well * 50 cells/mL
-        # OD600 = (cells_in_well * 50) / 8e8
+        # cells_in_well is total cells in well_volume µL (diluted)
+        # Original cell_volume µL was diluted into well_volume µL total
+        # Dilution factor = well_volume / cell_volume
+        # concentration in original (cells/mL) = (cells / well_volume) * dilution_factor * 1000
+        # OD600 = concentration / od_calibration
         
-        OD_CALIBRATION = 8e8  # cells/mL per OD unit for E. coli in LB
-        DILUTION_FACTOR = 300.0 / 20.0  # 300 µL total / 20 µL cells
+        DILUTION_FACTOR = args.well_volume / args.cell_volume
         
         plate_od = np.full((8, 12), np.nan)
         for idx, row_data in df_res.iterrows():
@@ -847,12 +850,12 @@ def main():
             if r_char in row_map and 0 <= c_idx < 12:
                 cells = row_data.get('Cells_in_Well')
                 if cells is not None and not np.isnan(cells):
-                    # cells is total in 300 µL well
-                    # concentration in well (cells/µL) = cells / 300
-                    # concentration in original 20 µL (cells/µL) = (cells / 300) * DILUTION_FACTOR
+                    # cells is total in well_volume µL well
+                    # concentration in well (cells/µL) = cells / well_volume
+                    # concentration in original (cells/µL) = (cells / well_volume) * DILUTION_FACTOR
                     # concentration in original (cells/mL) = concentration_original_per_uL * 1000
-                    conc_original_per_mL = (cells / 300.0) * DILUTION_FACTOR * 1000.0
-                    od600 = conc_original_per_mL / OD_CALIBRATION
+                    conc_original_per_mL = (cells / args.well_volume) * DILUTION_FACTOR * 1000.0
+                    od600 = conc_original_per_mL / args.od_calibration
                     plate_od[row_map[r_char], c_idx] = od600
 
         plt.figure(figsize=(12, 8))

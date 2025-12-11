@@ -50,9 +50,12 @@ python analyze_hts.py <layout_file> <fcs_directory> <wt_name> <blank_name> [--ch
 - `fcs_directory`: Path to the folder containing the .fcs files.
 - `wt_name`: The name used for the Wild Type sample in the layout (e.g., "WT").
 - `blank_name`: The name used for the Blank/Negative control in the layout (e.g., "Rep").
-- `--channel`: (Optional) The channel name to analyze (default: "Blue-CA").
+- `--channel`: (Optional) The channel name to analyze (default: "Blue C-A").
 - `--flow-rate`: Flow rate in µL/sec used for converting events to concentration (required for cell/OD outputs).
-- `--doublet-threshold`: FSC-A/FSC-H ratio above which an event is treated as a doublet and counted twice (default: 1.1).
+- `--doublet-threshold`: FSC-A/FSC-H ratio above which an event is treated as a doublet and counted twice (default: 1.5).
+- `--od-calibration`: Cells/mL per OD600 unit for your organism (default: 8e8 for E. coli in LB).
+- `--cell-volume`: Volume of cell suspension added to each well in µL (default: 20).
+- `--well-volume`: Total volume in each well in µL (default: 300).
 - `--output` / `-o`: (Optional) Output directory for results (default: current directory).
 
 ### Example:
