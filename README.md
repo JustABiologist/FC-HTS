@@ -51,6 +51,8 @@ python analyze_hts.py <layout_file> <fcs_directory> <wt_name> <blank_name> [--ch
 - `wt_name`: The name used for the Wild Type sample in the layout (e.g., "WT").
 - `blank_name`: The name used for the Blank/Negative control in the layout (e.g., "Rep").
 - `--channel`: (Optional) The channel name to analyze (default: "Blue-CA").
+- `--flow-rate`: Flow rate in µL/sec used for converting events to concentration (required for cell/OD outputs).
+- `--doublet-threshold`: FSC-A/FSC-H ratio above which an event is treated as a doublet and counted twice (default: 1.1).
 - `--output` / `-o`: (Optional) Output directory for results (default: current directory).
 
 ### Example:
@@ -68,6 +70,9 @@ The script generates the following in the output directory:
     - `3_histograms.png`: 8x12 grid of histograms.
     - `4_sd_heatmap.png`: Heatmap of standard deviation.
     - `5_iqr_heatmap.png`: Heatmap of IQR (outliers > 6500 blacked out).
+    - `6–11_*.png`: Supplemental split plots for Top-5 vs rest (inverse FC, raw medians, fold change).
+    - `12_cells_heatmap.png`: Estimated total cells per well (requires flow rate, corrected for doublets).
+    - `13_od600_heatmap.png`: Estimated OD600 of the undiluted cell medium (LB calibration ≈8×10⁸ cells/mL per OD).
 2.  **Data**:
     - `summary.xlsx`: Excel file with pivoted data (Inverse FC and Raw Medians).
     - `summary_inverse_fc.csv`: European-formatted CSV (semicolon separator).

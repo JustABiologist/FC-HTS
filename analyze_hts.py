@@ -23,6 +23,9 @@ def parse_arguments():
     parser.add_argument("wt_name", help="Name of the Wild Type (WT) annotation in the layout.")
     parser.add_argument("blank_name", help="Name of the Blank annotation in the layout used for background correction.")
     parser.add_argument("--channel", default="Blue C-A", help="Name of the channel to analyze (default: Blue-CA).")
+    parser.add_argument("--flow-rate", type=float, default=None, help="Flow rate (µL/sec) for the instrument.")
+    parser.add_argument("--doublet-threshold", type=float, default=1.1,
+                        help="FSC-A / FSC-H ratio above which an event is treated as a doublet.")
     parser.add_argument("--output", "-o", default=".", help="Output directory for results (default: current directory).")
     return parser.parse_args()
 
@@ -131,7 +134,27 @@ def find_channel_index(flow_data, channel_name):
             
     return None
 
-def read_fcs_data(fcs_path, channel_name):
+def get_text_keyword(flow_data, keys):
+    for key in keys:
+        if key in flow_data.text:
+            return flow_data.text[key]
+        for t in flow_data.text:
+            if t.lower() == key.lower():
+                return flow_data.text[t]
+    return None
+
+
+def find_channel_by_name(flow_data, names):
+    for idx, meta in flow_data.channels.items():
+        pnn = (meta.get("pnn") or meta.get("PnN") or "").lower()
+        pns = (meta.get("pns") or meta.get("PnS") or "").lower()
+        for name in names:
+            if name.lower() in pnn or name.lower() in pns:
+                return idx
+    return None
+
+
+def read_fcs_data(fcs_path, channel_name, doublet_threshold=None):
     """
     Reads an FCS file and returns the events for the specified channel.
     """
@@ -169,8 +192,53 @@ def read_fcs_data(fcs_path, channel_name):
         
         # If we found idx via the keys, we need to map key '1' to array index 0.
         array_idx = int(idx) - 1
-        
-        return events[:, array_idx]
+        channel_data = events[:, array_idx]
+
+        time_idx = find_channel_by_name(flow_data, ["Time"])
+        time_data = None
+        if time_idx:
+            time_data = events[:, int(time_idx) - 1]
+
+        timestep_value = get_text_keyword(flow_data, ["timestep", "$TIMESTEP"])
+        try:
+            timestep_value = float(timestep_value)
+        except (TypeError, ValueError):
+            timestep_value = None
+
+        tot_value = get_text_keyword(flow_data, ["tot", "$TOT"])
+        try:
+            tot_value = int(float(tot_value))
+        except (TypeError, ValueError):
+            tot_value = len(channel_data)
+
+        duration = None
+        if time_data is not None and timestep_value:
+            duration = (time_data.max() - time_data.min()) * timestep_value
+
+        events_per_second = None
+        if duration and duration > 0:
+            events_per_second = tot_value / duration
+
+        fsca_idx = find_channel_by_name(flow_data, ["FSC-A"])
+        fsch_idx = find_channel_by_name(flow_data, ["FSC-H"])
+        doublet_count = 0
+        if fsca_idx and fsch_idx:
+            fsca = events[:, int(fsca_idx) - 1]
+            fsch = events[:, int(fsch_idx) - 1]
+            ratio = fsca / (fsch + 1e-9)
+            if doublet_threshold is not None:
+                doublet_count = int(np.sum(ratio > doublet_threshold))
+
+        return {
+            "channel": channel_data,
+            "time": time_data,
+            "timestep": timestep_value,
+            "tot": tot_value,
+            "duration": duration,
+            "events_per_second": events_per_second,
+            "num_events": num_events,
+            "doublet_count": doublet_count,
+        }
         
     except Exception as e:
         print(f"Error reading {fcs_path}: {e}")
@@ -238,15 +306,28 @@ def main():
         if str(sample).upper() == 'BLANK':
             continue # Not measured
             
-        events = read_fcs_data(fpath, args.channel)
-        if events is None or len(events) == 0:
+        events_info = read_fcs_data(fpath, args.channel, args.doublet_threshold)
+        if events_info is None:
             continue
-            
-        # Calculate stats
-        # Use Median instead of Mean as requested
-        median_val = np.median(events)
-        sd_val = np.std(events)
+        channel_events = events_info['channel']
+        if len(channel_events) == 0:
+            continue
+        median_val = np.median(channel_events)
+        sd_val = np.std(channel_events)
+        total_events = events_info['tot']
+        doublet_count = events_info.get('doublet_count', 0)
+        corrected_events = total_events + doublet_count
+        duration = events_info.get('duration')
+        events_per_second = events_info.get('events_per_second')
         
+        sampled_volume = None
+        cells_in_well = None
+        if args.flow_rate and duration and duration > 0:
+            sampled_volume = args.flow_rate * duration
+            if sampled_volume > 0:
+                concentration = corrected_events / sampled_volume
+                cells_in_well = concentration * 300.0
+
         results.append({
             'Well': well,
             'Sample': sample,
@@ -254,7 +335,14 @@ def main():
                                 # Let's rename to minimize confusion but update references.
             'Median': median_val,
             'SD_dist': sd_val, # SD of the distribution in the well
-            'Events': events
+            'Events': channel_events,
+            'Events_per_second': events_per_second,
+            'Total_Events': total_events,
+            'Corrected_Events': corrected_events,
+            'Duration': duration,
+            'Sampled_Volume_uL': sampled_volume,
+            'Doublets': doublet_count,
+            'Cells_in_Well': cells_in_well if cells_in_well is not None else np.nan
         })
         
     if not results:
@@ -718,6 +806,62 @@ def main():
     plt.title(f"Heatmap of Intra-Well IQR ({args.channel}) - Capped at 6500")
     plt.savefig(os.path.join(args.output, "5_iqr_heatmap.png"), dpi=300)
     plt.close()
+
+    # Plot 12: Heatmap of computed cells per well (requires flow rate)
+    if args.flow_rate:
+        plate_cells = np.full((8, 12), np.nan)
+        for idx, row_data in df_res.iterrows():
+            w = row_data['Well']
+            r_char = w[0]
+            c_idx = int(w[1:]) - 1
+            if r_char in row_map and 0 <= c_idx < 12:
+                cells = row_data.get('Cells_in_Well')
+                if cells is not None and not np.isnan(cells):
+                    plate_cells[row_map[r_char], c_idx] = cells
+
+        plt.figure(figsize=(12, 8))
+        sns.heatmap(plate_cells, annot=True, fmt=".0f", 
+                    xticklabels=[str(i) for i in range(1, 13)],
+                    yticklabels=list(row_map.keys()), cmap="magma")
+        plt.title(f"Heatmap of Estimated Cell Count per Well (Doublet-Corrected)")
+        plt.savefig(os.path.join(args.output, "12_cells_heatmap.png"), dpi=300)
+        plt.close()
+
+        # Plot 13: Heatmap of estimated OD600 (pre-dilution)
+        # Using LB calibration: ~8e8 cells/mL per OD unit
+        # cells_in_well is total cells in 300 µL (diluted)
+        # Original 20 µL cell medium was diluted into 300 µL total
+        # So concentration in original = (cells_in_well / 300 µL) * (300 µL / 20 µL) = cells_in_well / 20 µL
+        # OD600 = concentration (cells/mL) / 8e8
+        # concentration in original (cells/mL) = (cells_in_well / 20 µL) * 1000 µL/mL = cells_in_well * 50 cells/mL
+        # OD600 = (cells_in_well * 50) / 8e8
+        
+        OD_CALIBRATION = 8e8  # cells/mL per OD unit for E. coli in LB
+        DILUTION_FACTOR = 300.0 / 20.0  # 300 µL total / 20 µL cells
+        
+        plate_od = np.full((8, 12), np.nan)
+        for idx, row_data in df_res.iterrows():
+            w = row_data['Well']
+            r_char = w[0]
+            c_idx = int(w[1:]) - 1
+            if r_char in row_map and 0 <= c_idx < 12:
+                cells = row_data.get('Cells_in_Well')
+                if cells is not None and not np.isnan(cells):
+                    # cells is total in 300 µL well
+                    # concentration in well (cells/µL) = cells / 300
+                    # concentration in original 20 µL (cells/µL) = (cells / 300) * DILUTION_FACTOR
+                    # concentration in original (cells/mL) = concentration_original_per_uL * 1000
+                    conc_original_per_mL = (cells / 300.0) * DILUTION_FACTOR * 1000.0
+                    od600 = conc_original_per_mL / OD_CALIBRATION
+                    plate_od[row_map[r_char], c_idx] = od600
+
+        plt.figure(figsize=(12, 8))
+        sns.heatmap(plate_od, annot=True, fmt=".2f", 
+                    xticklabels=[str(i) for i in range(1, 13)],
+                    yticklabels=list(row_map.keys()), cmap="YlOrRd")
+        plt.title(f"Heatmap of Estimated OD600 (Pre-Dilution Cell Medium)")
+        plt.savefig(os.path.join(args.output, "13_od600_heatmap.png"), dpi=300)
+        plt.close()
 
     # EXCEL EXPORT
     print("Generating summary Excel file...")
