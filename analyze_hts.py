@@ -26,6 +26,19 @@ def parse_arguments():
     parser.add_argument("--output", "-o", default=".", help="Output directory for results (default: current directory).")
     return parser.parse_args()
 
+def clean_name(txt: str) -> str:
+    """
+    Remove leading/trailing whitespace, convert NB-space (chr(160)) to
+    normal space and collapse runs of spaces to a single space.
+    """
+    if txt is None:
+        return ''
+    # replace NB-space by normal space
+    txt = str(txt).replace('\xa0', ' ')
+    # strip, collapse multiple spaces, make a single canonical version
+    txt = re.sub(r'\s+', ' ', txt).strip()
+    return txt
+
 def normalize_well_id(well_str):
     """Normalizes well ID to A01 format."""
     match = re.match(r"([A-H])(\d+)", well_str.upper())
@@ -63,7 +76,7 @@ def read_plate_layout(excel_path):
         # Direct mapping
         for r in range(min(n_rows, 8)):
             for c in range(min(n_cols, 12)):
-                val = str(df.iloc[r, c]).strip()
+                val = clean_name(df.iloc[r, c])
                 if val.lower() == 'nan' or val == '':
                     continue # Empty well
                 
@@ -176,7 +189,8 @@ def biexponential_transform(events, a=0.5, b=1, c=0.5, d=1, f=0, w=0):
 
 def main():
     args = parse_arguments()
-    
+    args.wt_name   = clean_name(args.wt_name)
+    args.blank_name = clean_name(args.blank_name)
     # Create output dir if not exists
     if not os.path.exists(args.output):
         os.makedirs(args.output)
@@ -210,7 +224,7 @@ def main():
         if well not in layout:
             continue # Skip wells not in layout (or implied empty)
             
-        sample = layout[well]
+        sample = clean_name(layout[well])
         if str(sample).upper() == 'BLANK' and args.blank_name.upper() != 'BLANK':
              # If the layout says BLANK literally, but user provided a specific blank name, treat as blank? 
              # Or maybe user means "BLANK" in the layout IS the blank. 
