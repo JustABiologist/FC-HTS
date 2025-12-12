@@ -3,7 +3,7 @@ channels:
   - conda-forge
   - defaults
 dependencies:
-  # Python
+  # Python only - no R/PeacoQC
   - python>=3.10,<3.13
   - pandas
   - numpy
@@ -13,13 +13,7 @@ dependencies:
   - scipy
   - xlrd
   - pip
-  # R (for PeacoQC preprocessing) - Optional, comment out if not needed
-  - r-base>=4.2
-  - r-devtools
-  - r-rcpp
-  - r-biocmanager
-  - r-ggplot2
-  - r-gridextra
   # Pip packages
   - pip:
     - flowio
+

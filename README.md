@@ -18,23 +18,45 @@ Key features:
 
 ## Installation
 
-1.  Clone the repository:
+### Option A: Quick Install (Python only, no PeacoQC)
+
+Best for **macOS** users or if you don't need flow QC preprocessing.
+
+**Using Conda:**
+```bash
+git clone https://github.com/yourusername/FC-HTS-Fortessa.git
+cd FC-HTS-Fortessa
+conda env create -f environment_simple.yaml
+conda activate hts_pipeline
+```
+
+**Using venv (pip):**
+```bash
+git clone https://github.com/yourusername/FC-HTS-Fortessa.git
+cd FC-HTS-Fortessa
+python -m venv venv
+source venv/bin/activate        # macOS/Linux
+# venv\Scripts\activate         # Windows
+pip install -r requirements.txt
+```
+
+### Option B: Full Install with PeacoQC (Windows recommended)
+
+Includes R and PeacoQC for flow anomaly detection (clogs, speed changes).
+
+1.  Install [Anaconda](https://www.anaconda.com/download) or [Miniconda](https://docs.conda.io/en/latest/miniconda.html)
+
+2.  Clone and create environment:
     ```bash
     git clone https://github.com/yourusername/FC-HTS-Fortessa.git
     cd FC-HTS-Fortessa
-    ```
-
-2.  Create the environment using Conda (Recommended):
-    ```bash
     conda env create -f environment.yaml
     conda activate hts_pipeline
     ```
 
-    Or using Python venv:
+3.  Install PeacoQC from GitHub:
     ```bash
-    python3 -m venv venv
-    source venv/bin/activate
-    pip install -r requirements.txt
+    Rscript install_peacoqc.R
     ```
 
 ## Usage
@@ -56,7 +78,22 @@ python analyze_hts.py <layout_file> <fcs_directory> <wt_name> <blank_name> [--ch
 - `--od-calibration`: Cells/mL per OD600 unit for your organism (default: 8e8 for E. coli in LB).
 - `--cell-volume`: Volume of cell suspension added to each well in µL (default: 20).
 - `--well-volume`: Total volume in each well in µL (default: 300).
+- `--peacoqc`: Enable PeacoQC preprocessing to remove flow anomalies (requires R with PeacoQC installed).
+- `--keep-qc-files`: Keep the QC'd FCS files in output directory (only with `--peacoqc`).
 - `--output` / `-o`: (Optional) Output directory for results (default: current directory).
+
+### PeacoQC Preprocessing (Optional)
+
+PeacoQC removes flow anomalies (clogs, speed changes, unstable events) before analysis.
+If installed via conda + `install_peacoqc.R`, simply add the `--peacoqc` flag:
+
+```bash
+python analyze_hts.py layout.xlsx data/ WT Rep --peacoqc --output results/
+```
+
+Use `--keep-qc-files` to save the cleaned FCS files for inspection.
+
+Reference: [PeacoQC on GitHub](https://github.com/saeyslab/PeacoQC)
 
 ### Example:
 
