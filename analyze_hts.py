@@ -982,15 +982,48 @@ def main():
                 sample_name = row_data['Sample']
                 rep_num = row_data['Rep_Num']
                 
-                # Plot histogram
-                # "bioexponentially transform" as requested
-                # We will transform the data before plotting
+                # Get filter bounds for coloring
+                mad_lower_val = row_data.get('MAD_Lower')
+                mad_upper_val = row_data.get('MAD_Upper')
+                intensity_floor_val = args.intensity_floor
                 
-                events_trans = biexponential_transform(events)
+                # Determine lower cutoff (max of intensity floor and MAD lower)
+                lower_cutoff = 0
+                if intensity_floor_val is not None:
+                    lower_cutoff = max(lower_cutoff, intensity_floor_val)
+                if mad_lower_val is not None:
+                    lower_cutoff = max(lower_cutoff, mad_lower_val)
                 
-                # Plot using seaborn histplot
-                # Do NOT use log_scale=True since we manually transformed it
-                sns.histplot(events_trans, ax=ax, bins=50, element="step", fill=True)
+                # Determine upper cutoff (MAD upper, if set)
+                upper_cutoff = None
+                if mad_upper_val is not None:
+                    upper_cutoff = mad_upper_val
+                
+                # Split events into kept (blue) and filtered (red)
+                if lower_cutoff > 0 or upper_cutoff is not None:
+                    kept_mask = events >= lower_cutoff
+                    if upper_cutoff is not None:
+                        kept_mask = kept_mask & (events <= upper_cutoff)
+                    
+                    events_kept = events[kept_mask]
+                    events_filtered = events[~kept_mask]
+                else:
+                    events_kept = events
+                    events_filtered = np.array([])
+                
+                # Transform for plotting
+                events_kept_trans = biexponential_transform(events_kept)
+                events_filtered_trans = biexponential_transform(events_filtered) if len(events_filtered) > 0 else np.array([])
+                
+                # Plot filtered events in red (debris/outliers)
+                if len(events_filtered_trans) > 0:
+                    sns.histplot(events_filtered_trans, ax=ax, bins=50, element="step", fill=True, 
+                                color='red', alpha=0.5, label='Filtered')
+                
+                # Plot kept events in blue on top
+                if len(events_kept_trans) > 0:
+                    sns.histplot(events_kept_trans, ax=ax, bins=50, element="step", fill=True,
+                                color='steelblue', alpha=0.7, label='Kept')
                 
                 ax.set_title(f"{sample_name}\n({well_id})", fontsize=6)
                 
@@ -1054,9 +1087,18 @@ def main():
     
     # Add legend to figure (upper right corner)
     from matplotlib.lines import Line2D
+    from matplotlib.patches import Patch
     legend_elements = []
     legend_labels = []
     
+    # Histogram fill colors
+    if args.intensity_floor is not None or args.mad_filter is not None:
+        legend_elements.append(Patch(facecolor='steelblue', alpha=0.7))
+        legend_labels.append('Kept events')
+        legend_elements.append(Patch(facecolor='red', alpha=0.5))
+        legend_labels.append('Filtered events')
+    
+    # Line markers
     if args.intensity_floor is not None:
         legend_elements.append(Line2D([0], [0], color='black', linestyle='--', linewidth=1))
         legend_labels.append(f'Intensity Floor ({args.intensity_floor})')
