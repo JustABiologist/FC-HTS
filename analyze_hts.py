@@ -77,6 +77,8 @@ def parse_arguments():
                         help="Enable PeacoQC preprocessing to remove flow anomalies (requires R with PeacoQC package).")
     parser.add_argument("--keep-qc-files", action="store_true",
                         help="Keep the QC'd FCS files in output directory (only with --peacoqc).")
+    parser.add_argument("--intensity-floor", type=float, default=None,
+                        help="Minimum intensity threshold for the analysis channel. Events below this are filtered as debris (e.g., 100).")
     parser.add_argument("--output", "-o", default=".", help="Output directory for results (default: current directory).")
     return parser.parse_args()
 
@@ -512,6 +514,9 @@ def main():
     # 3. Process Data
     results = [] # list of dicts: {Well, Sample, Mean, SD, Events}
     
+    if args.intensity_floor is not None:
+        print(f"\nApplying intensity floor: events < {args.intensity_floor} will be filtered as debris.")
+    
     for fpath in fcs_files:
         well = get_well_from_filename(fpath)
         if not well:
@@ -540,6 +545,14 @@ def main():
         channel_events = events_info['channel']
         if len(channel_events) == 0:
             continue
+        
+        # Apply intensity floor filter if specified (removes debris/noise)
+        if args.intensity_floor is not None:
+            channel_events = channel_events[channel_events >= args.intensity_floor]
+            if len(channel_events) == 0:
+                print(f"  Warning: All events in {well} filtered by intensity floor ({args.intensity_floor})")
+                continue
+        
         median_val = np.median(channel_events)
         sd_val = np.std(channel_events)
         total_events = events_info['tot']
