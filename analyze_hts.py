@@ -82,7 +82,9 @@ def parse_arguments():
     parser.add_argument("--intensity-floor", type=float, default=None,
                         help="Minimum intensity threshold for the analysis channel. Events below this are filtered as debris (e.g., 100).")
     parser.add_argument("--mad-filter", type=float, default=None,
-                        help="Filter outliers using MAD (Median Absolute Deviation). Keep events within X MADs of the median (e.g., 3.0).")
+                        help="Filter outliers using MAD (Median Absolute Deviation). Keep events within X MADs of the center (e.g., 3.0).")
+    parser.add_argument("--mode-center", action="store_true",
+                        help="Use mode (peak) instead of median as center for MAD filter. Better for data with debris.")
     parser.add_argument("--output", "-o", default=".", help="Output directory for results (default: current directory).")
     return parser.parse_args()
 
@@ -313,6 +315,36 @@ def biexponential_transform(events, a=0.5, b=1, c=0.5, d=1, f=0, w=0):
     return np.arcsinh(events / 150.0)
 
 
+def find_mode_kde(events, n_bins=200):
+    """
+    Find the mode (peak) of a distribution using histogram-based peak detection.
+    More robust than median for bimodal distributions (e.g., debris + signal).
+    
+    Returns:
+        mode_value: The x-value at the highest peak
+        peak_height: The density at the peak (for debugging)
+    """
+    if len(events) == 0:
+        return np.nan, 0
+    
+    # Use histogram to estimate density
+    # Work in log-ish space for flow cytometry data (arcsinh transform)
+    events_transformed = np.arcsinh(events / 150.0)
+    
+    # Create histogram
+    counts, bin_edges = np.histogram(events_transformed, bins=n_bins)
+    bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+    
+    # Find the bin with maximum count (the mode)
+    max_idx = np.argmax(counts)
+    mode_transformed = bin_centers[max_idx]
+    
+    # Transform back to original scale
+    mode_value = np.sinh(mode_transformed) * 150.0
+    
+    return mode_value, counts[max_idx]
+
+
 def run_peacoqc(fcs_files, output_dir):
     """
     Run PeacoQC preprocessing on FCS files using R.
@@ -507,6 +539,7 @@ def main():
             "well_volume": args.well_volume,
             "intensity_floor": args.intensity_floor,
             "mad_filter": args.mad_filter,
+            "mode_center": args.mode_center,
         },
         "preprocessing": {
             "peacoqc": args.peacoqc,
@@ -553,7 +586,8 @@ def main():
         print(f"\nApplying intensity floor: events < {args.intensity_floor} will be filtered as debris.")
     
     if args.mad_filter is not None:
-        print(f"Applying MAD filter: keeping events within {args.mad_filter} MADs of the median.")
+        center_type = "MODE (peak)" if args.mode_center else "median"
+        print(f"Applying MAD filter: keeping events within {args.mad_filter} MADs of the {center_type}.")
     
     for fpath in fcs_files:
         well = get_well_from_filename(fpath)
@@ -594,12 +628,22 @@ def main():
         # Apply MAD filter if specified (removes outliers from main peak)
         mad_lower = None
         mad_upper = None
+        mad_center = None
         events_for_histogram = channel_events.copy()  # Keep unfiltered for visualization
         if args.mad_filter is not None:
-            median_pre = np.median(channel_events)
-            mad = np.median(np.abs(channel_events - median_pre))  # Median Absolute Deviation
-            mad_lower = median_pre - args.mad_filter * mad
-            mad_upper = median_pre + args.mad_filter * mad
+            # Choose center: mode (peak) or median
+            if args.mode_center:
+                center, _ = find_mode_kde(channel_events)
+                mad_center = center
+            else:
+                center = np.median(channel_events)
+                mad_center = center
+            
+            # Calculate MAD around the chosen center
+            mad = np.median(np.abs(channel_events - center))  # Median Absolute Deviation
+            mad_lower = center - args.mad_filter * mad
+            mad_upper = center + args.mad_filter * mad
+            
             # Apply filter
             mask = (channel_events >= mad_lower) & (channel_events <= mad_upper)
             channel_events = channel_events[mask]
@@ -640,7 +684,8 @@ def main():
             'Doublets': doublet_count,
             'Cells_in_Well': cells_in_well if cells_in_well is not None else np.nan,
             'MAD_Lower': mad_lower,
-            'MAD_Upper': mad_upper
+            'MAD_Upper': mad_upper,
+            'MAD_Center': mad_center
         })
         
     if not results:
@@ -925,13 +970,18 @@ def main():
                 # Draw MAD filter bounds as dotted lines (if applied)
                 mad_lower = row_data.get('MAD_Lower')
                 mad_upper = row_data.get('MAD_Upper')
+                mad_center = row_data.get('MAD_Center')
                 if mad_lower is not None and mad_upper is not None:
                     # Transform bounds to biexponential space
                     mad_lower_trans = np.arcsinh(mad_lower / 150.0)
                     mad_upper_trans = np.arcsinh(mad_upper / 150.0)
-                    # Draw vertical dotted lines
+                    # Draw vertical dotted lines for bounds
                     ax.axvline(x=mad_lower_trans, color='red', linestyle=':', linewidth=1, alpha=0.8)
                     ax.axvline(x=mad_upper_trans, color='red', linestyle=':', linewidth=1, alpha=0.8)
+                    # Draw center line (mode or median) as solid green line
+                    if mad_center is not None:
+                        mad_center_trans = np.arcsinh(mad_center / 150.0)
+                        ax.axvline(x=mad_center_trans, color='green', linestyle='-', linewidth=1.5, alpha=0.9)
                 
             else:
                 # Empty well
