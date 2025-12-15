@@ -271,12 +271,44 @@ def read_fcs_data(fcs_path, channel_name, doublet_threshold=None):
             tot_value = len(channel_data)
 
         duration = None
+        effective_duration = None
+        gap_time = 0  # Time lost to gaps/clogs
+        
         if time_data is not None and timestep_value:
+            # Raw duration (max - min)
             duration = (time_data.max() - time_data.min()) * timestep_value
+            
+            # Effective duration: excludes large gaps (clogs, bubbles, etc.)
+            # Sort time data and calculate inter-event intervals
+            sorted_time = np.sort(time_data)
+            time_diffs = np.diff(sorted_time) * timestep_value  # Convert to seconds
+            
+            if len(time_diffs) > 0:
+                # Use median interval as baseline for "normal" event spacing
+                median_interval = np.median(time_diffs)
+                
+                # Gaps larger than 10× median are considered anomalies (clogs, etc.)
+                # This threshold catches obvious gaps while ignoring normal variation
+                gap_threshold = max(median_interval * 10, 0.01)  # At least 10ms
+                
+                # Identify normal intervals vs gaps
+                normal_mask = time_diffs <= gap_threshold
+                gap_mask = time_diffs > gap_threshold
+                
+                # Sum of normal intervals = effective acquisition time
+                effective_duration = np.sum(time_diffs[normal_mask])
+                gap_time = np.sum(time_diffs[gap_mask])
+                
+                # If no gaps detected, effective = raw
+                if effective_duration == 0:
+                    effective_duration = duration
 
         events_per_second = None
+        effective_events_per_second = None
         if duration and duration > 0:
             events_per_second = tot_value / duration
+        if effective_duration and effective_duration > 0:
+            effective_events_per_second = num_events / effective_duration
 
         fsca_idx = find_channel_by_name(flow_data, ["FSC-A"])
         fsch_idx = find_channel_by_name(flow_data, ["FSC-H"])
@@ -294,7 +326,10 @@ def read_fcs_data(fcs_path, channel_name, doublet_threshold=None):
             "timestep": timestep_value,
             "tot": tot_value,
             "duration": duration,
+            "effective_duration": effective_duration,
+            "gap_time": gap_time,
             "events_per_second": events_per_second,
+            "effective_events_per_second": effective_events_per_second,
             "num_events": num_events,
             "doublet_count": doublet_count,
         }
@@ -668,15 +703,23 @@ def main():
         median_val = np.median(channel_events)
         sd_val = np.std(channel_events)
         total_events = events_info['tot']
+        num_events = events_info.get('num_events', total_events)
         doublet_count = events_info.get('doublet_count', 0)
-        corrected_events = total_events + doublet_count
+        corrected_events = num_events + doublet_count  # Use actual event count, not $TOT
         duration = events_info.get('duration')
+        effective_duration = events_info.get('effective_duration', duration)
+        gap_time = events_info.get('gap_time', 0)
         events_per_second = events_info.get('events_per_second')
+        
+        # Warn if significant gap time detected (>10% of total duration)
+        if duration and gap_time and gap_time > duration * 0.1:
+            print(f"  Note: {well} had {gap_time:.2f}s of gaps ({100*gap_time/duration:.1f}% of acquisition)")
         
         sampled_volume = None
         cells_in_well = None
-        if args.flow_rate and duration and duration > 0:
-            sampled_volume = args.flow_rate * duration
+        # Use EFFECTIVE duration for cell counting (excludes gaps/clogs)
+        if args.flow_rate and effective_duration and effective_duration > 0:
+            sampled_volume = args.flow_rate * effective_duration
             if sampled_volume > 0:
                 concentration = corrected_events / sampled_volume
                 cells_in_well = concentration * args.well_volume
@@ -694,6 +737,8 @@ def main():
             'Total_Events': total_events,
             'Corrected_Events': corrected_events,
             'Duration': duration,
+            'Effective_Duration': effective_duration,
+            'Gap_Time': gap_time,
             'Sampled_Volume_uL': sampled_volume,
             'Doublets': doublet_count,
             'Cells_in_Well': cells_in_well if cells_in_well is not None else np.nan,
