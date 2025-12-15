@@ -653,6 +653,9 @@ def main():
         if len(channel_events) == 0:
             continue
         
+        # Save raw events BEFORE any filtering (for histogram visualization)
+        events_for_histogram = channel_events.copy()
+        
         # Apply intensity floor filter if specified (removes debris/noise)
         if args.intensity_floor is not None:
             channel_events = channel_events[channel_events >= args.intensity_floor]
@@ -665,7 +668,6 @@ def main():
         mad_lower = None
         mad_upper = None
         mad_center = None
-        events_for_histogram = channel_events.copy()  # Keep unfiltered for visualization
         if args.mad_filter is not None:
             # Transform to arcsinh space (where flow cytometry data is more symmetric)
             cofactor = 150.0
