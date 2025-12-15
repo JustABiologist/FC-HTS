@@ -12,9 +12,10 @@ if (!requireNamespace("BiocManager", quietly = TRUE)) {
     install.packages("BiocManager", repos = "https://cloud.r-project.org")
 }
 
-# Install Bioconductor dependencies
-bioc_deps <- c("flowCore", "ComplexHeatmap")
+# Install Bioconductor dependencies (flowWorkspace is required by PeacoQC)
+bioc_deps <- c("flowCore", "flowWorkspace", "ComplexHeatmap")
 message("\nInstalling Bioconductor dependencies: ", paste(bioc_deps, collapse = ", "))
+message("(This may take several minutes...)\n")
 
 for (pkg in bioc_deps) {
     if (!requireNamespace(pkg, quietly = TRUE)) {
@@ -41,7 +42,7 @@ if (requireNamespace("PeacoQC", quietly = TRUE)) {
     message("PeacoQC installed successfully!")
     message(paste("  Version:", packageVersion("PeacoQC")))
     message("\nInstalled packages:")
-    for (pkg in c("flowCore", "ComplexHeatmap", "PeacoQC")) {
+    for (pkg in c("flowCore", "flowWorkspace", "ComplexHeatmap", "PeacoQC")) {
         if (requireNamespace(pkg, quietly = TRUE)) {
             message(paste("  OK:", pkg, "-", as.character(packageVersion(pkg))))
         }
