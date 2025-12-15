@@ -984,28 +984,31 @@ def main():
                 sample_name = row_data['Sample']
                 rep_num = row_data['Rep_Num']
                 
+                # Transform ALL events first to get consistent bin edges
+                events_trans = biexponential_transform(events)
+                
+                # Create shared bin edges for consistent scaling
+                bin_edges = np.linspace(events_trans.min(), events_trans.max(), 51)
+                
                 # Split events: below intensity floor (red) vs rest (blue)
                 if args.intensity_floor is not None:
-                    debris_mask = events < args.intensity_floor
-                    events_debris = events[debris_mask]
-                    events_main = events[~debris_mask]
+                    floor_trans = np.arcsinh(args.intensity_floor / 150.0)
+                    debris_mask = events_trans < floor_trans
+                    events_debris_trans = events_trans[debris_mask]
+                    events_main_trans = events_trans[~debris_mask]
                 else:
-                    events_debris = np.array([])
-                    events_main = events
+                    events_debris_trans = np.array([])
+                    events_main_trans = events_trans
                 
-                # Transform for plotting
-                events_main_trans = biexponential_transform(events_main)
+                # Plot debris in red (below intensity floor) - use same bins!
+                if len(events_debris_trans) > 0:
+                    ax.hist(events_debris_trans, bins=bin_edges, color='red', alpha=0.6, 
+                           edgecolor='darkred', linewidth=0.5)
                 
-                # Plot debris in red (below intensity floor)
-                if len(events_debris) > 0:
-                    events_debris_trans = biexponential_transform(events_debris)
-                    sns.histplot(events_debris_trans, ax=ax, bins=50, element="step", fill=True, 
-                                color='red', alpha=0.6)
-                
-                # Plot main events in blue
+                # Plot main events in blue - use same bins!
                 if len(events_main_trans) > 0:
-                    sns.histplot(events_main_trans, ax=ax, bins=50, element="step", fill=True,
-                                color='steelblue', alpha=0.7)
+                    ax.hist(events_main_trans, bins=bin_edges, color='steelblue', alpha=0.7,
+                           edgecolor='navy', linewidth=0.5)
                 
                 ax.set_title(f"{sample_name}\n({well_id})", fontsize=6)
                 
