@@ -79,6 +79,8 @@ def parse_arguments():
                         help="Keep the QC'd FCS files in output directory (only with --peacoqc).")
     parser.add_argument("--intensity-floor", type=float, default=None,
                         help="Minimum intensity threshold for the analysis channel. Events below this are filtered as debris (e.g., 100).")
+    parser.add_argument("--mad-filter", type=float, default=None,
+                        help="Filter outliers using MAD (Median Absolute Deviation). Keep events within X MADs of the median (e.g., 3.0).")
     parser.add_argument("--output", "-o", default=".", help="Output directory for results (default: current directory).")
     return parser.parse_args()
 
@@ -517,6 +519,9 @@ def main():
     if args.intensity_floor is not None:
         print(f"\nApplying intensity floor: events < {args.intensity_floor} will be filtered as debris.")
     
+    if args.mad_filter is not None:
+        print(f"Applying MAD filter: keeping events within {args.mad_filter} MADs of the median.")
+    
     for fpath in fcs_files:
         well = get_well_from_filename(fpath)
         if not well:
@@ -553,6 +558,22 @@ def main():
                 print(f"  Warning: All events in {well} filtered by intensity floor ({args.intensity_floor})")
                 continue
         
+        # Apply MAD filter if specified (removes outliers from main peak)
+        mad_lower = None
+        mad_upper = None
+        events_for_histogram = channel_events.copy()  # Keep unfiltered for visualization
+        if args.mad_filter is not None:
+            median_pre = np.median(channel_events)
+            mad = np.median(np.abs(channel_events - median_pre))  # Median Absolute Deviation
+            mad_lower = median_pre - args.mad_filter * mad
+            mad_upper = median_pre + args.mad_filter * mad
+            # Apply filter
+            mask = (channel_events >= mad_lower) & (channel_events <= mad_upper)
+            channel_events = channel_events[mask]
+            if len(channel_events) == 0:
+                print(f"  Warning: All events in {well} filtered by MAD filter")
+                continue
+        
         median_val = np.median(channel_events)
         sd_val = np.std(channel_events)
         total_events = events_info['tot']
@@ -576,14 +597,17 @@ def main():
                                 # Let's rename to minimize confusion but update references.
             'Median': median_val,
             'SD_dist': sd_val, # SD of the distribution in the well
-            'Events': channel_events,
+            'Events': channel_events,  # Filtered events for statistics
+            'Events_Raw': events_for_histogram,  # Unfiltered events for histogram visualization
             'Events_per_second': events_per_second,
             'Total_Events': total_events,
             'Corrected_Events': corrected_events,
             'Duration': duration,
             'Sampled_Volume_uL': sampled_volume,
             'Doublets': doublet_count,
-            'Cells_in_Well': cells_in_well if cells_in_well is not None else np.nan
+            'Cells_in_Well': cells_in_well if cells_in_well is not None else np.nan,
+            'MAD_Lower': mad_lower,
+            'MAD_Upper': mad_upper
         })
         
     if not results:
@@ -816,7 +840,8 @@ def main():
             
             if well_id in well_data_map:
                 row_data = well_data_map[well_id]
-                events = row_data['Events']
+                # Use raw (unfiltered) events for visualization to show MAD bounds context
+                events = row_data.get('Events_Raw', row_data['Events'])
                 sample_name = row_data['Sample']
                 rep_num = row_data['Rep_Num']
                 
@@ -863,6 +888,17 @@ def main():
                 ax.tick_params(axis='both', which='both', labelbottom=True, labelleft=True, labelsize=6)
                 ax.grid(True, which='minor', alpha=0.2)
                 ax.grid(True, which='major', alpha=0.5)
+                
+                # Draw MAD filter bounds as dotted lines (if applied)
+                mad_lower = row_data.get('MAD_Lower')
+                mad_upper = row_data.get('MAD_Upper')
+                if mad_lower is not None and mad_upper is not None:
+                    # Transform bounds to biexponential space
+                    mad_lower_trans = np.arcsinh(mad_lower / 150.0)
+                    mad_upper_trans = np.arcsinh(mad_upper / 150.0)
+                    # Draw vertical dotted lines
+                    ax.axvline(x=mad_lower_trans, color='red', linestyle=':', linewidth=1, alpha=0.8)
+                    ax.axvline(x=mad_upper_trans, color='red', linestyle=':', linewidth=1, alpha=0.8)
                 
             else:
                 # Empty well
