@@ -3,10 +3,12 @@ import os
 import re
 import sys
 import glob
+import json
 import warnings
 import subprocess
 import tempfile
 import shutil
+from datetime import datetime
 
 import flowio
 import pandas as pd
@@ -485,6 +487,37 @@ def main():
     # Create output dir if not exists
     if not os.path.exists(args.output):
         os.makedirs(args.output)
+    
+    # Save configuration for reproducibility
+    config = {
+        "timestamp": datetime.now().isoformat(),
+        "version": "1.0.0",
+        "inputs": {
+            "layout_file": os.path.abspath(args.layout_file),
+            "fcs_input": os.path.abspath(args.fcs_input),
+            "wt_name": args.wt_name,
+            "blank_name": args.blank_name,
+        },
+        "parameters": {
+            "channel": args.channel,
+            "flow_rate": args.flow_rate,
+            "doublet_threshold": args.doublet_threshold,
+            "od_calibration": args.od_calibration,
+            "cell_volume": args.cell_volume,
+            "well_volume": args.well_volume,
+            "intensity_floor": args.intensity_floor,
+            "mad_filter": args.mad_filter,
+        },
+        "preprocessing": {
+            "peacoqc": args.peacoqc,
+            "keep_qc_files": args.keep_qc_files,
+        },
+        "output_directory": os.path.abspath(args.output),
+    }
+    config_path = os.path.join(args.output, "config.json")
+    with open(config_path, 'w') as f:
+        json.dump(config, f, indent=2)
+    print(f"Configuration saved to: {config_path}")
     
     # 1. Load Plate Layout
     layout = read_plate_layout(args.layout_file)
