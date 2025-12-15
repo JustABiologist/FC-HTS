@@ -967,6 +967,11 @@ def main():
                 ax.grid(True, which='minor', alpha=0.2)
                 ax.grid(True, which='major', alpha=0.5)
                 
+                # Draw intensity floor as black dashed line (if applied)
+                if args.intensity_floor is not None:
+                    floor_trans = np.arcsinh(args.intensity_floor / 150.0)
+                    ax.axvline(x=floor_trans, color='black', linestyle='--', linewidth=1, alpha=0.8)
+                
                 # Draw MAD filter bounds as dotted lines (if applied)
                 mad_lower = row_data.get('MAD_Lower')
                 mad_upper = row_data.get('MAD_Upper')
@@ -987,8 +992,28 @@ def main():
                 # Empty well
                 ax.axis('off')
                 # ax.text(0.5, 0.5, "Empty", ha='center', va='center', fontsize=6, transform=ax.transAxes)
+    
+    # Add legend to figure (upper right corner)
+    from matplotlib.lines import Line2D
+    legend_elements = []
+    legend_labels = []
+    
+    if args.intensity_floor is not None:
+        legend_elements.append(Line2D([0], [0], color='black', linestyle='--', linewidth=1))
+        legend_labels.append(f'Intensity Floor ({args.intensity_floor})')
+    
+    if args.mad_filter is not None:
+        legend_elements.append(Line2D([0], [0], color='green', linestyle='-', linewidth=1.5))
+        center_type = "Mode" if args.mode_center else "Median"
+        legend_labels.append(f'{center_type} (center)')
+        legend_elements.append(Line2D([0], [0], color='red', linestyle=':', linewidth=1))
+        legend_labels.append(f'MAD Bounds (±{args.mad_filter})')
+    
+    if legend_elements:
+        fig.legend(legend_elements, legend_labels, loc='upper right', fontsize=8, 
+                   framealpha=0.9, edgecolor='gray')
                 
-    plt.tight_layout()
+    plt.tight_layout(rect=[0, 0, 0.92, 1])  # Make room for legend on the right
     plt.savefig(os.path.join(args.output, "3_histograms.png"), dpi=300)
     plt.close()
     
