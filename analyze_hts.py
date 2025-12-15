@@ -23,6 +23,40 @@ from openpyxl import load_workbook
 # Suppress warnings for cleaner output
 warnings.filterwarnings("ignore")
 
+
+def find_rscript():
+    """
+    Find Rscript executable, checking common Windows installation paths.
+    Returns the path to Rscript or None if not found.
+    """
+    # First check if Rscript is in PATH
+    rscript = shutil.which("Rscript")
+    if rscript:
+        return rscript
+    
+    # On Windows, check common R installation locations
+    if sys.platform == "win32":
+        program_files = [
+            os.environ.get("ProgramFiles", r"C:\Program Files"),
+            os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)"),
+            os.path.join(os.environ.get("LOCALAPPDATA", ""), "Programs"),
+        ]
+        
+        for pf in program_files:
+            r_base = os.path.join(pf, "R")
+            if os.path.exists(r_base):
+                # Find R versions (e.g., R-4.4.2)
+                try:
+                    versions = sorted([d for d in os.listdir(r_base) if d.startswith("R-")], reverse=True)
+                    for version in versions:
+                        rscript_path = os.path.join(r_base, version, "bin", "Rscript.exe")
+                        if os.path.exists(rscript_path):
+                            return rscript_path
+                except (OSError, PermissionError):
+                    continue
+    
+    return None
+
 def parse_arguments():
     parser = argparse.ArgumentParser(description="BD Fortessa HTS Analysis Pipeline")
     parser.add_argument("layout_file", help="Path to the Excel file containing the 96-well plate layout (names or BLANK).")
@@ -374,9 +408,20 @@ message("PeacoQC preprocessing complete!")
     
     # Run R script
     try:
-        # Try Rscript first
+        # Find Rscript executable
+        rscript = find_rscript()
+        if not rscript:
+            print("⚠️  Rscript not found. Is R installed?")
+            print("   On Windows, R is typically at: C:\\Program Files\\R\\R-x.x.x\\bin\\Rscript.exe")
+            print("   Either add R to PATH or install R from https://cran.r-project.org/")
+            print("Continuing with original (unprocessed) FCS files...")
+            if os.path.exists(r_script_path):
+                os.remove(r_script_path)
+            return None
+        
+        print(f"Using R from: {rscript}")
         result = subprocess.run(
-            ["Rscript", r_script_path, input_dir, qc_output_dir],
+            [rscript, r_script_path, input_dir, qc_output_dir],
             capture_output=True,
             text=True,
             timeout=600  # 10 minute timeout
