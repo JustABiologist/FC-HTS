@@ -626,25 +626,39 @@ def main():
                 continue
         
         # Apply MAD filter if specified (removes outliers from main peak)
+        # All calculations done in ARCSINH space for symmetry, then converted back
         mad_lower = None
         mad_upper = None
         mad_center = None
         events_for_histogram = channel_events.copy()  # Keep unfiltered for visualization
         if args.mad_filter is not None:
-            # Choose center: mode (peak) or median
+            # Transform to arcsinh space (where flow cytometry data is more symmetric)
+            cofactor = 150.0
+            events_trans = np.arcsinh(channel_events / cofactor)
+            
+            # Choose center: mode (peak) or median - in arcsinh space
             if args.mode_center:
-                center, _ = find_mode_kde(channel_events)
-                mad_center = center
+                # find_mode_kde already works in arcsinh space internally
+                center_raw, _ = find_mode_kde(channel_events)
+                center_trans = np.arcsinh(center_raw / cofactor)
             else:
-                center = np.median(channel_events)
-                mad_center = center
+                center_trans = np.median(events_trans)
+                center_raw = np.sinh(center_trans) * cofactor
             
-            # Calculate MAD around the chosen center
-            mad = np.median(np.abs(channel_events - center))  # Median Absolute Deviation
-            mad_lower = center - args.mad_filter * mad
-            mad_upper = center + args.mad_filter * mad
+            mad_center = center_raw  # Store in raw space for reference
             
-            # Apply filter
+            # Calculate MAD in arcsinh space (symmetric bounds in display space)
+            mad_trans = np.median(np.abs(events_trans - center_trans))
+            
+            # Calculate bounds in arcsinh space
+            lower_trans = center_trans - args.mad_filter * mad_trans
+            upper_trans = center_trans + args.mad_filter * mad_trans
+            
+            # Convert bounds back to raw space for filtering
+            mad_lower = np.sinh(lower_trans) * cofactor
+            mad_upper = np.sinh(upper_trans) * cofactor
+            
+            # Apply filter (in raw space)
             mask = (channel_events >= mad_lower) & (channel_events <= mad_upper)
             channel_events = channel_events[mask]
             if len(channel_events) == 0:
