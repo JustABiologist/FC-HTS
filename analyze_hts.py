@@ -122,7 +122,7 @@ def read_plate_layout(excel_path):
     except Exception as e:
         print(f"Error reading Excel file: {e}")
         sys.exit(1)
-
+    
     layout_map = {}
     
     # Rows A-H
@@ -652,7 +652,7 @@ def main():
         channel_events = events_info['channel']
         if len(channel_events) == 0:
             continue
-        
+            
         # Save raw events BEFORE any filtering (for histogram visualization)
         events_for_histogram = channel_events.copy()
         
@@ -725,7 +725,7 @@ def main():
             if sampled_volume > 0:
                 concentration = corrected_events / sampled_volume
                 cells_in_well = concentration * args.well_volume
-
+        
         results.append({
             'Well': well,
             'Sample': sample,
@@ -1010,7 +1010,15 @@ def main():
                     ax.hist(events_main_trans, bins=bin_edges, color='steelblue', alpha=0.7,
                            edgecolor='navy', linewidth=0.5)
                 
-                ax.set_title(f"{sample_name}\n({well_id})", fontsize=6)
+                # Get the median (from filtered events, used for analysis)
+                median_val = row_data['Median']
+                
+                # Draw median line (orange, dashed)
+                median_trans = np.arcsinh(median_val / 150.0)
+                ax.axvline(x=median_trans, color='orange', linestyle='--', linewidth=1.5, alpha=0.9)
+                
+                # Title with median value
+                ax.set_title(f"{sample_name} ({well_id})\nMedian: {median_val:.0f}", fontsize=5)
                 
                 # Only label edges
                 ax.set_xlabel("Biexp" if r == rows-1 else "")
@@ -1080,6 +1088,10 @@ def main():
     legend_elements.append(Patch(facecolor='steelblue', alpha=0.7))
     legend_labels.append('Signal')
     
+    # Median line (always shown)
+    legend_elements.append(Line2D([0], [0], color='orange', linestyle='--', linewidth=1.5))
+    legend_labels.append('Median (analysis)')
+    
     if args.intensity_floor is not None:
         legend_elements.append(Patch(facecolor='red', alpha=0.6))
         legend_labels.append(f'Debris (< {args.intensity_floor})')
@@ -1089,7 +1101,7 @@ def main():
     if args.mad_filter is not None:
         legend_elements.append(Line2D([0], [0], color='green', linestyle='-', linewidth=1.5))
         center_type = "Mode" if args.mode_center else "Median"
-        legend_labels.append(f'{center_type} (center)')
+        legend_labels.append(f'{center_type} (MAD center)')
         legend_elements.append(Line2D([0], [0], color='red', linestyle=':', linewidth=1))
         legend_labels.append(f'MAD Bounds (±{args.mad_filter})')
     
@@ -1132,7 +1144,7 @@ def main():
     plt.title(f"Heatmap of Intra-Well Standard Deviation ({args.channel})")
     plt.savefig(os.path.join(args.output, "4_sd_heatmap.png"), dpi=300)
     plt.close()
-    
+
     # Plot 5: Heatmap of IQR
     plt.figure(figsize=(12, 8))
     
